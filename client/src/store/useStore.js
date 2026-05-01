@@ -1,85 +1,106 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import axios from 'axios';
+import api from '../lib/api';
 
 export const useStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       // --- AUTH STATE ---
       user: null,
+      token: null,
       isAuthenticated: false,
       sidebarOpen: true,
       
-      // --- DATA STATE (Initialized with empty arrays to prevent crashes) ---
+      // --- DATA STATE ---
       sosRequests: [], 
-      hazards: [],      // <--- Crucial fix: Prevents map crash
-      rescueUnits: [],  // <--- Crucial fix: Prevents map crash
-      alerts: [], 
+      hazards: [],
+      rescueUnits: [],
+      alerts: [],
+      disasters: [],
 
-      // --- ACTIONS ---
-      login: (userData) => set({ user: userData, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
+      // --- AUTH ACTIONS ---
+      login: (userData, token) => {
+        set({ 
+          user: userData, 
+          token: token, 
+          isAuthenticated: true 
+        });
+      },
+      
+      logout: () => {
+        set({ user: null, token: null, isAuthenticated: false, sosRequests: [] });
+      },
+      
       setSidebarOpen: (isOpen) => set({ sidebarOpen: isOpen }),
       
-      // Update local user data without logging out (for Family/Group updates)
       updateUser: (updates) => set((state) => ({
         user: { ...state.user, ...updates }
       })),
 
-      // Placeholder for refresh logic if needed later
-      refreshUser: async (email) => { /* logic to re-fetch user profile */ },
-
       // --- ASYNC DATA ACTIONS ---
 
-      // 1. Fetch Active SOS Alerts
       fetchSOS: async () => {
         try {
-          const res = await axios.get('http://localhost:5000/api/sos/active');
-          if (res.data) set({ sosRequests: res.data });
+          const res = await api.get('/api/sos/active');
+          if (Array.isArray(res.data)) {
+            set({ sosRequests: res.data });
+          }
         } catch (error) {
-          console.error("Failed to fetch SOS:", error);
+          // Silent - SOS fetch failures are non-critical on dashboard load
         }
       },
 
-      // 2. Resolve (Cancel) an SOS Alert
       resolveSOS: async (sosId) => {
         try {
-          // Tell backend to mark as resolved
-          await axios.post('http://localhost:5000/api/sos/resolve', { sosId });
-          
-          // Optimistically remove from local state immediately
+          await api.post('/api/sos/resolve', { sosId });
+          // Immediately remove from local state
           set((state) => ({
             sosRequests: state.sosRequests.filter(s => s._id !== sosId)
           }));
         } catch (error) {
           console.error("Failed to resolve SOS:", error);
+          throw error;
         }
       },
 
       updateSOSDetails: async (sosId, detailsData) => {
         try {
-          await axios.put(`http://localhost:5000/api/sos/update/${sosId}`, detailsData);
-          // Refresh list to show updated info
-          const res = await axios.get('http://localhost:5000/api/sos/active');
-          if (res.data) set({ sosRequests: res.data });
+          await api.put(`/api/sos/update/${sosId}`, detailsData);
+          // Refresh
+          const res = await api.get('/api/sos/active');
+          if (Array.isArray(res.data)) set({ sosRequests: res.data });
         } catch (error) {
           console.error("Failed to update SOS details:", error);
+          throw error;
         }
       },
 
-      // 3. Fetch Broadcast Alerts
-      fetchBroadcasts: async () => {
+      assignSOS: async (sosId, agencyId, agencyName, notes) => {
         try {
-          const res = await axios.get('http://localhost:5000/api/broadcast/active');
-          if (res.data) set({ alerts: res.data });
+          await api.put(`/api/sos/assign/${sosId}`, { agencyId, agencyName, notes });
+          const res = await api.get('/api/sos/active');
+          if (Array.isArray(res.data)) set({ sosRequests: res.data });
         } catch (error) {
-          console.error("Failed to fetch alerts:", error);
+          console.error("Failed to assign SOS:", error);
+          throw error;
         }
       },
+
+      updateSOSStatus: async (sosId, status, notes) => {
+        try {
+          await api.put(`/api/sos/status/${sosId}`, { status, notes });
+          const res = await api.get('/api/sos/active');
+          if (Array.isArray(res.data)) set({ sosRequests: res.data });
+        } catch (error) {
+          console.error("Failed to update SOS status:", error);
+          throw error;
+        }
+      },
+
       fetchHazards: async () => {
         try {
-          const res = await axios.get('http://localhost:5000/api/community/hazards');
-          if (res.data) set({ hazards: res.data });
+          const res = await api.get('/api/community/hazards');
+          if (Array.isArray(res.data)) set({ hazards: res.data });
         } catch (error) { console.error(error); }
       },
     }),
@@ -87,6 +108,7 @@ export const useStore = create(
       name: 'resq-connect-storage',
       partialize: (state) => ({ 
         user: state.user, 
+        token: state.token,
         isAuthenticated: state.isAuthenticated 
       }),
     }

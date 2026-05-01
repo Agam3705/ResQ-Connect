@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { useStore } from '../../store/useStore';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
@@ -59,11 +59,11 @@ export function FamilyPage() {
 
   const fetchMyFamilies = async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/family/my-families/${userId}`);
+      const res = await api.get(`/api/family/my-families/${userId}`);
       // Safety check for array
       setMyFamilies(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      console.error(err);
+      console.warn(err?.response?.status || err.message);
     } finally {
       setLoading(false);
     }
@@ -85,12 +85,12 @@ export function FamilyPage() {
   const fetchRoomData = async () => {
     if (!activeFamily) return;
     try {
-      const res = await axios.get(`http://localhost:5000/api/family/details/${activeFamily._id}`);
+      const res = await api.get(`/api/family/details/${activeFamily._id}`);
       setActiveFamily(res.data);
-      const msgRes = await axios.get(`http://localhost:5000/api/family/messages/${activeFamily._id}`);
+      const msgRes = await api.get(`/api/family/messages/${activeFamily._id}`);
       setMessages(Array.isArray(msgRes.data) ? msgRes.data : []);
     } catch (err) {
-      console.error(err);
+      console.warn(err?.response?.status || err.message);
     }
   };
 
@@ -103,7 +103,7 @@ export function FamilyPage() {
     e.preventDefault();
     const toastId = toast.loading("Creating...");
     try {
-      await axios.post('http://localhost:5000/api/family/create', { userId, name: inputs.name });
+      await api.post('/api/family/create', { userId, name: inputs.name });
       toast.success("Created!", { id: toastId });
       fetchMyFamilies();
       setView('lobby');
@@ -116,7 +116,7 @@ export function FamilyPage() {
     e.preventDefault();
     const toastId = toast.loading("Joining...");
     try {
-      await axios.post('http://localhost:5000/api/family/join', { userId, code: inputs.code.toUpperCase() });
+      await api.post('/api/family/join', { userId, code: inputs.code.toUpperCase() });
       toast.success("Joined!", { id: toastId });
       fetchMyFamilies();
       setView('lobby');
@@ -129,7 +129,7 @@ export function FamilyPage() {
     e.preventDefault();
     if (!newMessage.trim()) return;
     try {
-      await axios.post('http://localhost:5000/api/family/message', {
+      await api.post('/api/family/message', {
         familyId: activeFamily._id,
         senderName: user.name,
         text: newMessage
@@ -137,7 +137,7 @@ export function FamilyPage() {
       setNewMessage("");
       fetchRoomData();
     } catch (err) {
-      console.error(err);
+      console.warn(err?.response?.status || err.message);
     }
   };
 
@@ -325,7 +325,7 @@ export function FamilyPage() {
                    if(navigator.geolocation) {
                      toast("Updating Location...");
                      navigator.geolocation.getCurrentPosition(p => {
-                       axios.post('http://localhost:5000/api/family/location', {
+                       api.post('/api/family/location', {
                          userId, lat: p.coords.latitude, lng: p.coords.longitude
                        });
                      });

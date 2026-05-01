@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const resourceSchema = new mongoose.Schema({
   agencyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Who owns this?
   name: { type: String, required: true }, // e.g. "Water Bottles"
-  category: { type: String, enum: ['food', 'medical', 'equipment', 'shelter'], default: 'food' },
+  category: { type: String, enum: ['food', 'medical', 'equipment', 'shelter', 'water', 'clothing', 'fuel', 'other'], default: 'other' },
   quantity: { type: Number, default: 0 },
   unit: { type: String, default: 'units' }, // e.g. "boxes", "liters"
   

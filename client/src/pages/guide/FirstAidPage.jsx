@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
+import { useStore } from '../../store/useStore';
+import api from '../../lib/api';
+import toast from 'react-hot-toast';
+import { ConfirmModal } from '../../components/shared/ConfirmModal';
 import { 
   Search, Heart, Flame, Droplet, Activity, Zap, X, ChevronRight, 
-  Bone, AlertTriangle, Sun, Wind, HeartPulse, Brain
+  Bone, AlertTriangle, Sun, Wind, HeartPulse, Brain, Plus, Edit, Trash2
 } from 'lucide-react';
 
 // --- EMERGENCY DATA (12 GUIDES) ---
@@ -185,11 +189,81 @@ const FIRST_AID_DATA = [
 ];
 
 export function FirstAidPage() {
+  const { user } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGuide, setSelectedGuide] = useState(null);
+  const [customGuides, setCustomGuides] = useState([]);
+  
+  // Admin form state
+  const [showAdminForm, setShowAdminForm] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ id: '', title: '', tags: '', steps: '', warning: '' });
+  const [deleteId, setDeleteId] = useState(null);
+
+  useEffect(() => { fetchCustomGuides(); }, []);
+
+  const fetchCustomGuides = async () => {
+    try {
+      const res = await api.get('/api/first-aid');
+      setCustomGuides(res.data || []);
+    } catch (err) {}
+  };
+
+  const handleAdminSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...form,
+        tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
+        steps: form.steps.split('\n').map(s => s.trim()).filter(Boolean)
+      };
+      
+      if (editId) {
+        await api.put(`/api/first-aid/${editId}`, payload);
+        toast.success('Guide updated!');
+      } else {
+        await api.post('/api/first-aid', payload);
+        toast.success('Guide added!');
+      }
+      
+      setForm({ id: '', title: '', tags: '', steps: '', warning: '' });
+      setEditId(null);
+      setShowAdminForm(false);
+      fetchCustomGuides();
+    } catch (err) { toast.error('Failed to save guide'); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await api.delete(`/api/first-aid/${deleteId}`);
+      toast.success('Deleted');
+      setDeleteId(null);
+      fetchCustomGuides();
+    } catch (err) { toast.error('Failed'); }
+  };
+
+  const openEdit = (guide) => {
+    setForm({
+      id: guide.id, title: guide.title,
+      tags: guide.tags.join(', '),
+      steps: guide.steps.join('\n'),
+      warning: guide.warning || ''
+    });
+    setEditId(guide._id);
+    setShowAdminForm(true);
+  };
+
+  // Combine hardcoded and custom guides
+  const formattedCustom = customGuides.map(cg => ({
+    ...cg,
+    isCustom: true,
+    icon: <Heart className="w-8 h-8 text-blue-500" /> // Default icon for custom
+  }));
+  const allGuides = [...FIRST_AID_DATA, ...formattedCustom];
 
   // Filter Logic
-  const filteredGuides = FIRST_AID_DATA.filter(guide => 
+  const filteredGuides = allGuides.filter(guide => 
     guide.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     guide.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -199,10 +273,17 @@ export function FirstAidPage() {
       <div className="max-w-7xl mx-auto space-y-8 px-4 md:px-0">
         
         {/* HEADER */}
-        <div className="text-center py-8">
+        <div className="text-center py-8 relative">
           <h1 className="text-4xl font-bold text-white mb-4">First Aid Guide</h1>
           <p className="text-slate-400 mb-8">Instant instructions for medical emergencies.</p>
           
+          {user?.role === 'admin' && (
+            <button onClick={() => { setShowAdminForm(true); setEditId(null); setForm({ id: '', title: '', tags: '', steps: '', warning: '' }); }}
+              className="absolute top-0 right-0 md:top-8 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 text-sm">
+              <Plus size={16}/> Add Guide
+            </button>
+          )}
+
           {/* SEARCH BAR */}
           <div className="relative max-w-xl mx-auto">
             <Search className="absolute left-4 top-3.5 text-slate-400 w-5 h-5" />
@@ -215,26 +296,58 @@ export function FirstAidPage() {
           </div>
         </div>
 
+        {/* ADMIN FORM */}
+        {showAdminForm && user?.role === 'admin' && (
+          <form onSubmit={handleAdminSubmit} className="bg-slate-800 border border-slate-700 p-6 rounded-2xl space-y-4 max-w-2xl mx-auto animate-in fade-in">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-white">{editId ? 'Edit Guide' : 'Add Custom Guide'}</h2>
+              <button type="button" onClick={() => setShowAdminForm(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <input required placeholder="Guide ID (e.g., snake_bite_v2)" className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
+                value={form.id} onChange={e => setForm({...form, id: e.target.value})} disabled={editId} />
+              <input required placeholder="Title" className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
+                value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+            </div>
+            <input required placeholder="Tags (comma separated, e.g. pain, bite)" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
+              value={form.tags} onChange={e => setForm({...form, tags: e.target.value})} />
+            <textarea required placeholder="Steps (one per line)" rows={4} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
+              value={form.steps} onChange={e => setForm({...form, steps: e.target.value})} />
+            <input placeholder="Warning/Caution (optional)" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
+              value={form.warning} onChange={e => setForm({...form, warning: e.target.value})} />
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl">Save Guide</button>
+          </form>
+        )}
+
         {/* GUIDES GRID (3 Columns Max) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredGuides.map((guide) => (
-            <div 
-              key={guide.id}
-              onClick={() => setSelectedGuide(guide)}
-              className={`p-6 rounded-2xl border ${guide.color} bg-slate-900/50 cursor-pointer hover:scale-[1.02] transition-transform group flex flex-col justify-between h-full`}
-            >
-              <div>
-                <div className="flex justify-between items-start mb-4">
-                  <div className="p-3 bg-slate-900 rounded-xl group-hover:bg-slate-800 transition-colors">
-                    {guide.icon}
+            <div key={guide.isCustom ? guide._id : guide.id} className="relative group">
+              <div 
+                onClick={() => setSelectedGuide(guide)}
+                className={`p-6 rounded-2xl border ${guide.color} bg-slate-900/50 cursor-pointer hover:scale-[1.02] transition-transform flex flex-col justify-between h-full`}
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="p-3 bg-slate-900 rounded-xl group-hover:bg-slate-800 transition-colors">
+                      {guide.icon}
+                    </div>
+                    <ChevronRight className="text-slate-500 group-hover:text-white transition-colors" />
                   </div>
-                  <ChevronRight className="text-slate-500 group-hover:text-white transition-colors" />
+                  <h3 className="text-xl font-bold text-white mb-2">{guide.title}</h3>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+                    {guide.tags.slice(0, 3).join(' • ')}
+                  </p>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">{guide.title}</h3>
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">
-                  {guide.tags.slice(0, 3).join(' • ')}
-                </p>
               </div>
+
+              {/* Admin Actions */}
+              {user?.role === 'admin' && guide.isCustom && (
+                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={(e) => { e.stopPropagation(); openEdit(guide); }} className="p-2 bg-slate-800 hover:bg-blue-600 text-white rounded-lg shadow-lg transition-colors"><Edit size={14}/></button>
+                  <button onClick={(e) => { e.stopPropagation(); setDeleteId(guide._id); }} className="p-2 bg-slate-800 hover:bg-red-600 text-white rounded-lg shadow-lg transition-colors"><Trash2 size={14}/></button>
+                </div>
+              )}
             </div>
           ))}
 
@@ -277,13 +390,15 @@ export function FirstAidPage() {
                 </div>
 
                 {/* Warning Box */}
-                <div className="mt-8 p-4 bg-red-900/20 border border-red-500/50 rounded-xl flex gap-3 items-start">
-                  <AlertTriangle className="text-red-500 w-6 h-6 flex-shrink-0" />
-                  <div>
-                    <h4 className="text-red-400 font-bold mb-1">CRITICAL WARNING</h4>
-                    <p className="text-red-200 text-sm">{selectedGuide.warning}</p>
+                {selectedGuide.warning && (
+                  <div className="mt-8 p-4 bg-red-900/20 border border-red-500/50 rounded-xl flex gap-3 items-start">
+                    <AlertTriangle className="text-red-500 w-6 h-6 flex-shrink-0" />
+                    <div>
+                      <h4 className="text-red-400 font-bold mb-1">CRITICAL WARNING</h4>
+                      <p className="text-red-200 text-sm">{selectedGuide.warning}</p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Modal Footer */}
@@ -300,6 +415,14 @@ export function FirstAidPage() {
           </div>
         )}
 
+        <ConfirmModal 
+          isOpen={!!deleteId}
+          onClose={() => setDeleteId(null)}
+          onConfirm={handleDelete}
+          title="Delete Guide"
+          message="Are you sure you want to delete this first aid guide? This action cannot be undone."
+          isDanger={true}
+        />
       </div>
     </DashboardLayout>
   );

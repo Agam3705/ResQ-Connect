@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { useStore } from '../../store/useStore';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Send, Users } from 'lucide-react';
@@ -18,32 +18,32 @@ export function GlobalChatPage() {
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length]);
 
   const fetchMessages = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/social/chat');
+      const res = await api.get('/api/social/chat');
       setMessages(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.warn(err?.response?.status || err.message); }
   };
 
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
     try {
-      await axios.post('http://localhost:5000/api/social/chat', {
+      await api.post('/api/social/chat', {
         userId: user._id || user.id,
         userName: user.name,
         text: inputText
       });
       setInputText('');
       fetchMessages();
-    } catch (err) { console.error(err); }
+    } catch (err) { console.warn(err?.response?.status || err.message); }
   };
 
   return (
-    <DashboardLayout>
-      <div className="h-[calc(100vh-8rem)] flex flex-col max-w-5xl mx-auto bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
+    <DashboardLayout noScroll>
+      <div className="h-full flex flex-col max-w-5xl mx-auto bg-slate-800 border-x border-slate-700 overflow-hidden">
         
         {/* Header */}
         <div className="p-4 bg-slate-900 border-b border-slate-700 flex justify-between items-center shrink-0">
@@ -58,7 +58,7 @@ export function GlobalChatPage() {
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, i) => {
-            const isMe = msg.userId === (user._id || user.id);
+            const isMe = msg.userId === (user?._id || user?.id);
             return (
               <div key={i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                 <div className={`max-w-[85%] md:max-w-[70%] p-3 rounded-xl text-sm ${

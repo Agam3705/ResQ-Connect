@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { useStore } from '../../store/useStore';
 import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast'; // <--- IMPORT THIS
@@ -34,7 +34,7 @@ export function SOSButton() {
           description: "Immediate Assistance Required"
         };
 
-        await axios.post('http://localhost:5000/api/sos/create', payload);
+        await api.post('/api/sos/create', payload);
         
         // Success! Update the loading toast to a Success Message
         toast.success("SOS SIGNAL SENT! RESCUE NOTIFIED.", {

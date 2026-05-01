@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { useStore } from '../../store/useStore';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { AlertTriangle, HandHeart, MessageSquare, MapPin, CheckCircle, XCircle, Send } from 'lucide-react';
@@ -22,9 +22,9 @@ export function CommunityPage() {
 
   const fetchRumors = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/community/rumors');
+      const res = await api.get('/api/community/rumors');
       setRumors(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.warn(err?.response?.status || err.message); }
   };
 
   // -- HANDLERS --
@@ -37,7 +37,7 @@ export function CommunityPage() {
     
     navigator.geolocation.getCurrentPosition(async (pos) => {
       try {
-        await axios.post('http://localhost:5000/api/community/hazard', {
+        await api.post('/api/community/hazard', {
           userId: user._id,
           type: hazards.type,
           description: hazards.description,
@@ -56,7 +56,7 @@ export function CommunityPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/community/help', {
+      await api.post('/api/community/help', {
         userId: user._id,
         name: user.name,
         ...help
@@ -70,7 +70,7 @@ export function CommunityPage() {
   // 3. VOTE ON RUMOR
   const voteRumor = async (id, voteType) => {
     try {
-      await axios.post('http://localhost:5000/api/community/rumors/vote', { id, vote: voteType });
+      await api.post('/api/community/rumors/vote', { id, vote: voteType });
       toast.success("Vote Recorded");
       fetchRumors();
     } catch (err) { toast.error("Failed"); }
@@ -90,7 +90,6 @@ export function CommunityPage() {
         <div className="flex bg-slate-800 p-1 rounded-xl">
           {[
             { id: 'hazard', label: 'Report Hazard', icon: <AlertTriangle size={18}/> },
-            { id: 'help', label: 'Offer Help', icon: <HandHeart size={18}/> },
             { id: 'rumor', label: 'Rumor Control', icon: <MessageSquare size={18}/> }
           ].map(tab => (
             <button
@@ -160,8 +159,8 @@ export function CommunityPage() {
                 <div>
                   <label className="text-sm text-slate-400">Contact Number</label>
                   <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
-                    placeholder="+91..."
-                    value={help.contact} onChange={e => setHelp({...help, contact: e.target.value})}
+                    placeholder="10 digit number" maxLength={10} pattern="[0-9]{10}"
+                    value={help.contact} onChange={e => setHelp({...help, contact: e.target.value.replace(/\D/g, '')})}
                   />
                 </div>
               </div>
@@ -185,7 +184,7 @@ export function CommunityPage() {
             {rumors.length === 0 && (
               <div className="text-center py-10 text-slate-500">
                 <p>No active rumors tracked.</p>
-                <button onClick={() => axios.post('http://localhost:5000/api/community/rumors/seed').then(fetchRumors)} className="text-xs text-blue-500 mt-2 underline">
+                <button onClick={() => api.post('/api/community/rumors/seed').then(fetchRumors)} className="text-xs text-blue-500 mt-2 underline">
                   (Dev: Click to Seed Data)
                 </button>
               </div>
@@ -220,12 +219,20 @@ export function CommunityPage() {
 
                   {/* ACTION BUTTONS */}
                   <div className="flex gap-3">
-                    <button onClick={() => voteRumor(rumor._id, 'true')} className="flex-1 bg-slate-900 hover:bg-emerald-900/30 border border-slate-700 hover:border-emerald-500 text-emerald-500 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-colors">
-                      <CheckCircle size={16} /> True
-                    </button>
-                    <button onClick={() => voteRumor(rumor._id, 'false')} className="flex-1 bg-slate-900 hover:bg-red-900/30 border border-slate-700 hover:border-red-500 text-red-500 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-colors">
-                      <XCircle size={16} /> Fake
-                    </button>
+                    {rumor.voters?.some(v => v.userId === user._id) ? (
+                      <div className="w-full text-center p-2 bg-slate-900/50 rounded-lg border border-slate-700 text-slate-500 text-sm italic">
+                        You have already voted on this poll
+                      </div>
+                    ) : (
+                      <>
+                        <button onClick={() => voteRumor(rumor._id, 'true')} className="flex-1 bg-slate-900 hover:bg-emerald-900/30 border border-slate-700 hover:border-emerald-500 text-emerald-500 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-colors">
+                          <CheckCircle size={16} /> True
+                        </button>
+                        <button onClick={() => voteRumor(rumor._id, 'false')} className="flex-1 bg-slate-900 hover:bg-red-900/30 border border-slate-700 hover:border-red-500 text-red-500 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-colors">
+                          <XCircle size={16} /> Fake
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );

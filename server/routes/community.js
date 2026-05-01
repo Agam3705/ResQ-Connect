@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { verifyToken } = require('../middleware/auth');
 const Hazard = require('../models/Hazard');
 const HelpOffer = require('../models/HelpOffer');
 const Rumor = require('../models/Rumor');
@@ -15,8 +16,18 @@ router.post('/hazard', async (req, res) => {
 
 router.get('/hazards', async (req, res) => {
   try {
-    const hazards = await Hazard.find().sort({ timestamp: -1 });
+    const { all } = req.query;
+    const query = all === 'true' ? {} : { approvalStatus: { $ne: 'rejected' } };
+    const hazards = await Hazard.find(query).sort({ timestamp: -1 });
     res.json(hazards);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/hazard/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const hazard = await Hazard.findByIdAndUpdate(req.params.id, { approvalStatus: status }, { new: true });
+    res.json(hazard);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -29,20 +40,39 @@ router.post('/help', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.get('/help-offers', async (req, res) => {
+  try {
+    const offers = await HelpOffer.find().sort({ createdAt: -1 });
+    res.json(offers);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // --- RUMORS ---
 router.get('/rumors', async (req, res) => {
   try {
-    const rumors = await Rumor.find().sort({ createdAt: -1 });
+    const { all } = req.query;
+    const query = all === 'true' ? {} : { adminStatus: { $ne: 'debunked' } };
+    const rumors = await Rumor.find(query).sort({ createdAt: -1 });
     res.json(rumors);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/rumors/vote', async (req, res) => {
+router.post('/rumors/vote', verifyToken, async (req, res) => {
   try {
     const { id, vote } = req.body; // vote = 'true' or 'false'
-    const update = vote === 'true' ? { $inc: { votesTrue: 1 } } : { $inc: { votesFalse: 1 } };
-    const updatedRumor = await Rumor.findByIdAndUpdate(id, update, { new: true });
-    res.json(updatedRumor);
+    const rumor = await Rumor.findById(id);
+    if (!rumor) return res.status(404).json({ message: 'Rumor not found' });
+    
+    // Check if user already voted
+    const existingVoteIndex = rumor.voters.findIndex(v => v.userId === req.user.id);
+    if (existingVoteIndex !== -1) {
+      rumor.voters[existingVoteIndex].vote = vote;
+    } else {
+      rumor.voters.push({ userId: req.user.id, vote });
+    }
+    
+    await rumor.save();
+    res.json(rumor);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

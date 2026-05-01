@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
-import { SOSButton } from '../emergency/SOSButton'; // <--- Import it
+import { SOSButton } from '../emergency/SOSButton';
 import { useStore } from '../../store/useStore';
 
-export function DashboardLayout({ children }) {
+export function DashboardLayout({ children, noScroll }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useStore();
 
@@ -18,20 +18,18 @@ export function DashboardLayout({ children }) {
           onMobileClose={() => setMobileMenuOpen(false)} 
         />
         
-        <main className="flex-1 overflow-auto p-4 lg:p-6 relative">
+        <main className={`flex-1 ${noScroll ? 'overflow-hidden' : 'overflow-auto p-4 lg:p-6'} relative`}>
            <div className="absolute inset-0 opacity-10 pointer-events-none" 
              style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
            </div>
            
-           <div className="relative z-10">
+           <div className={`relative z-10 ${noScroll ? 'h-full' : ''}`}>
              {children}
            </div>
         </main>
       </div>
 
-      {/* Show SOS Button only for Civilians */}
       {user?.role === 'civilian' && <SOSButton />}
-      
     </div>
   );
 }

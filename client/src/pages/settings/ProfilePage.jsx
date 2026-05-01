@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { useStore } from '../../store/useStore';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { User, Shield, Lock, Save, Loader2, Mail, Phone, MapPin } from 'lucide-react';
@@ -24,16 +24,16 @@ export function ProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/user/profile/${user._id}`);
+      const res = await api.get(`/api/user/profile/${user._id}`);
       setFormData(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.warn(err?.response?.status || err.message); }
   };
 
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await axios.put(`http://localhost:5000/api/user/profile/${user._id}`, formData);
+      const res = await api.put(`/api/user/profile/${user._id}`, formData);
       toast.success("Profile Updated");
       updateUser(res.data); // Update local store
     } catch (err) { toast.error("Failed to update"); }
@@ -44,7 +44,7 @@ export function ProfilePage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await axios.put(`http://localhost:5000/api/user/profile/password/${user._id}`, passData);
+      await api.put(`/api/user/profile/password/${user._id}`, passData);
       toast.success("Password Changed");
       setPassData({ currentPassword: '', newPassword: '' });
     } catch (err) { toast.error(err.response?.data?.message || "Failed"); }
@@ -107,8 +107,8 @@ export function ProfilePage() {
                   </div>
                   <div>
                     <label className="text-xs text-slate-400 mb-1 block">Phone Number</label>
-                    <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
-                      value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+91..." />
+                    <input type="tel" pattern="[0-9]{10}" maxLength="10" title="10-digit phone number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
+                      value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value.replace(/\D/g, '')})} placeholder="10-digit number" />
                   </div>
                   <div>
                     <label className="text-xs text-slate-400 mb-1 block">Blood Group</label>
@@ -126,8 +126,8 @@ export function ProfilePage() {
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-xs text-slate-400 mb-1 block">Emergency Contact (Parent/Guardian)</label>
-                    <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
-                      value={formData.emergencyContact || ''} onChange={e => setFormData({...formData, emergencyContact: e.target.value})} placeholder="Name & Phone Number" />
+                    <input type="tel" pattern="[0-9]{10}" maxLength="10" title="10-digit phone number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none"
+                      value={formData.emergencyContact || ''} onChange={e => setFormData({...formData, emergencyContact: e.target.value.replace(/\D/g, '')})} placeholder="10-digit number" />
                   </div>
                 </div>
 

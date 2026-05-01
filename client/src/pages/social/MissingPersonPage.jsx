@@ -1,41 +1,41 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { useStore } from '../../store/useStore';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Search, UserPlus, CheckCircle, MapPin, Phone, Calendar, User, Camera, Image as ImageIcon } from 'lucide-react';
+import { Search, UserPlus, CheckCircle, MapPin, Phone, Calendar, User, Camera, Image as ImageIcon, Archive } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function MissingPersonPage() {
   const { user } = useStore();
   const [people, setPeople] = useState([]);
-  const [view, setView] = useState('board');
+  const [view, setView] = useState('board'); // 'board', 'report', 'past'
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Form State
-  const [photo, setPhoto] = useState(null); // <--- NEW STATE FOR FILE
+  const [photo, setPhoto] = useState(null);
   const [formData, setFormData] = useState({
     name: '', age: '', gender: 'Male', lastSeenLocation: '', description: '', contact: ''
   });
 
   useEffect(() => {
     fetchPeople();
-  }, []);
+  }, [view]); // Refetch when view changes (so we can pass all=true for past data)
 
   const fetchPeople = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/missing');
+      const url = view === 'past' && user?.role === 'admin' ? '/api/missing?all=true' : '/api/missing';
+      const res = await api.get(url);
       setPeople(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.warn(err?.response?.status || err.message); }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    // USE FORMDATA FOR FILE UPLOAD
     const data = new FormData();
-    data.append('reporterId', user._id);
+    data.append('reporterId', user._id || user.id);
     data.append('reporterName', user.name);
     data.append('reporterContact', formData.contact);
     data.append('name', formData.name);
@@ -43,21 +43,17 @@ export function MissingPersonPage() {
     data.append('gender', formData.gender);
     data.append('lastSeenLocation', formData.lastSeenLocation);
     data.append('description', formData.description);
-    if (photo) {
-      data.append('photo', photo); // Attach the file
-    }
+    if (photo) data.append('photo', photo);
 
     try {
-      await axios.post('http://localhost:5000/api/missing/report', data, {
+      await api.post('/api/missing/report', data, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success("Report Submitted");
       
-      // Reset Form
       setFormData({ name: '', age: '', gender: 'Male', lastSeenLocation: '', description: '', contact: '' });
       setPhoto(null);
       setView('board');
-      fetchPeople();
     } catch (err) { toast.error("Failed to submit"); }
     finally { setLoading(false); }
   };
@@ -65,7 +61,7 @@ export function MissingPersonPage() {
   const markFound = async (id) => {
     if(!window.confirm("Confirm this person is found?")) return;
     try {
-      await axios.put(`http://localhost:5000/api/missing/found/${id}`);
+      await api.put(`/api/missing/found/${id}`);
       toast.success("Status Updated: FOUND");
       fetchPeople();
     } catch (err) { toast.error("Update failed"); }
@@ -88,16 +84,24 @@ export function MissingPersonPage() {
             </h1>
             <p className="text-slate-400">Community bulletin board for locating missing individuals.</p>
           </div>
-          <button 
-            onClick={() => setView(view === 'board' ? 'report' : 'board')}
-            className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
-              view === 'board' 
-                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg' 
-                : 'bg-slate-700 text-slate-300 hover:text-white'
-            }`}
-          >
-            {view === 'board' ? <><UserPlus size={20}/> Report Missing</> : 'Back to Board'}
-          </button>
+          <div className="flex gap-2">
+            {user?.role === 'admin' && (
+              <button onClick={() => setView(view === 'past' ? 'board' : 'past')}
+                className={`px-4 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${view === 'past' ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'}`}>
+                <Archive size={20}/> Past Data
+              </button>
+            )}
+            <button 
+              onClick={() => setView(view === 'board' || view === 'past' ? 'report' : 'board')}
+              className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                view === 'board' || view === 'past'
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg' 
+                  : 'bg-slate-700 text-slate-300 hover:text-white'
+              }`}
+            >
+              {view === 'board' || view === 'past' ? <><UserPlus size={20}/> Report Missing</> : 'Back to Board'}
+            </button>
+          </div>
         </div>
 
         {/* --- VIEW 1: REPORT FORM --- */}
@@ -146,8 +150,8 @@ export function MissingPersonPage() {
                 </div>
                 <div>
                   <label className="text-xs text-slate-400">Your Contact No.</label>
-                  <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" required placeholder="+91..."
-                    value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
+                  <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" required type="tel" pattern="[0-9]{10}" maxLength="10" title="10-digit phone number" placeholder="10-digit number"
+                    value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value.replace(/\D/g, '')})} />
                 </div>
               </div>
 
@@ -170,8 +174,8 @@ export function MissingPersonPage() {
           </div>
         )}
 
-        {/* --- VIEW 2: BOARD --- */}
-        {view === 'board' && (
+        {/* --- VIEW 2/3: BOARD & PAST --- */}
+        {(view === 'board' || view === 'past') && (
           <div className="space-y-6">
             <div className="relative">
               <Search className="absolute left-4 top-3.5 text-slate-500 w-5 h-5" />
@@ -199,7 +203,7 @@ export function MissingPersonPage() {
                     <div className="w-20 h-20 bg-slate-900 rounded-2xl flex-shrink-0 overflow-hidden border-2 border-slate-700">
                       {person.photoUrl ? (
                         <img 
-                          src={`http://localhost:5000/${person.photoUrl.replace(/\\/g, '/')}`} 
+                          src={`${import.meta.env.VITE_API_URL || ''}/${person.photoUrl.replace(/\\/g, '/')}`} 
                           alt={person.name} 
                           className="w-full h-full object-cover"
                         />

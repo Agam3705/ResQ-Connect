@@ -14,6 +14,7 @@ const missingPersonSchema = new mongoose.Schema({
   photoUrl: { type: String, default: '' }, // Optional photo URL
   
   status: { type: String, enum: ['missing', 'found'], default: 'missing' },
+  foundAt: Date, // Track when they were found
   createdAt: { type: Date, default: Date.now }
 });
 

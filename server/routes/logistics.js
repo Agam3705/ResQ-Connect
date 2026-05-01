@@ -1,65 +1,127 @@
 const express = require('express');
 const router = express.Router();
 const Resource = require('../models/Resource');
+const { verifyToken } = require('../middleware/auth');
+const { asyncHandler } = require('../utils/helpers');
 
-// 1. GET ALL RESOURCES (For a specific agency or all)
-router.get('/', async (req, res) => {
-  try {
-    const resources = await Resource.find().sort({ lastUpdated: -1 });
-    res.json(resources);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+// 1. GET ALL RESOURCES
+router.get('/', verifyToken, asyncHandler(async (req, res) => {
+  // If agency, return only theirs. If admin, could return all (assuming agencyId is set on creation).
+  // For now, return all or filter by agency if agency logs in.
+  const query = req.user.role === 'admin' ? {} : { agencyId: req.user.id };
+  const resources = await Resource.find(query).sort({ lastUpdated: -1 });
+  res.json(resources);
+}));
 
 // 2. ADD NEW RESOURCE
-router.post('/add', async (req, res) => {
-  try {
-    const newItem = new Resource(req.body);
-    await newItem.save();
-    res.status(201).json(newItem);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+router.post('/add', verifyToken, asyncHandler(async (req, res) => {
+  const newItem = new Resource({
+    ...req.body,
+    agencyId: req.user.id
+  });
+  await newItem.save();
+  res.status(201).json(newItem);
+}));
 
-// 3. DISPATCH RESOURCE (Update status & move it)
-router.put('/dispatch/:id', async (req, res) => {
-  try {
-    const { destination } = req.body;
-    const updatedItem = await Resource.findByIdAndUpdate(
-      req.params.id,
-      { 
-        status: 'in-transit', 
-        destination: destination,
-        lastUpdated: new Date()
-      },
-      { new: true }
-    );
-    res.json(updatedItem);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+// 3. EDIT STORED RESOURCE
+router.put('/edit/:id', verifyToken, asyncHandler(async (req, res) => {
+  const resource = await Resource.findById(req.params.id);
+  if (!resource) return res.status(404).json({ message: 'Not found' });
+  if (resource.agencyId?.toString() !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Not authorized' });
+  }
 
-// 4. MARK AS DELIVERED/DISTRIBUTED
-router.put('/deliver/:id', async (req, res) => {
-  try {
-    const item = await Resource.findById(req.params.id);
-    const updatedItem = await Resource.findByIdAndUpdate(
-      req.params.id,
-      { 
-        status: 'distributed', 
-        location: item.destination, // Current location becomes the destination
-        destination: '',
-        lastUpdated: new Date()
-      },
-      { new: true }
-    );
-    res.json(updatedItem);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+  const updatedItem = await Resource.findByIdAndUpdate(
+    req.params.id,
+    { ...req.body, lastUpdated: new Date() },
+    { new: true }
+  );
+  res.json(updatedItem);
+}));
 
-// 5. DELETE
-router.delete('/:id', async (req, res) => {
-  try {
-    await Resource.findByIdAndDelete(req.params.id);
-    res.json({ message: "Deleted" });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+// 4. DISPATCH RESOURCE (Partial or Full)
+router.put('/dispatch/:id', verifyToken, asyncHandler(async (req, res) => {
+  const { destination, quantity } = req.body;
+  const dispatchQty = parseInt(quantity);
+  const resource = await Resource.findById(req.params.id);
+  
+  if (!resource) return res.status(404).json({ message: 'Not found' });
+  if (resource.agencyId?.toString() !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Not authorized' });
+  }
+  if (dispatchQty <= 0 || dispatchQty > resource.quantity) {
+    return res.status(400).json({ message: 'Invalid quantity' });
+  }
+
+  if (dispatchQty < resource.quantity) {
+    // Partial dispatch: split the resource
+    resource.quantity -= dispatchQty;
+    resource.lastUpdated = new Date();
+    await resource.save();
+
+    // Create transit clone
+    const transitItem = new Resource({
+      agencyId: resource.agencyId,
+      name: resource.name,
+      category: resource.category,
+      quantity: dispatchQty,
+      unit: resource.unit,
+      status: 'in-transit',
+      location: resource.location,
+      destination: destination
+    });
+    await transitItem.save();
+    return res.json({ message: 'Partial dispatch successful' });
+  } else {
+    // Full dispatch
+    resource.status = 'in-transit';
+    resource.destination = destination;
+    resource.lastUpdated = new Date();
+    await resource.save();
+    return res.json(resource);
+  }
+}));
+
+// 5. MARK AS DELIVERED
+router.put('/deliver/:id', verifyToken, asyncHandler(async (req, res) => {
+  const resource = await Resource.findById(req.params.id);
+  if (!resource) return res.status(404).json({ message: 'Not found' });
+  if (resource.agencyId?.toString() !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Not authorized' });
+  }
+
+  resource.status = 'distributed';
+  resource.location = resource.destination;
+  resource.destination = '';
+  resource.lastUpdated = new Date();
+  await resource.save();
+  res.json(resource);
+}));
+
+// 6. MARK AS FAILED (Return to stored)
+router.put('/failed/:id', verifyToken, asyncHandler(async (req, res) => {
+  const resource = await Resource.findById(req.params.id);
+  if (!resource) return res.status(404).json({ message: 'Not found' });
+  if (resource.agencyId?.toString() !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Not authorized' });
+  }
+
+  resource.status = 'stored';
+  resource.destination = '';
+  resource.lastUpdated = new Date();
+  await resource.save();
+  res.json(resource);
+}));
+
+// 7. DELETE
+router.delete('/:id', verifyToken, asyncHandler(async (req, res) => {
+  const resource = await Resource.findById(req.params.id);
+  if (!resource) return res.status(404).json({ message: 'Not found' });
+  if (resource.agencyId?.toString() !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Not authorized' });
+  }
+  await Resource.findByIdAndDelete(req.params.id);
+  res.json({ message: "Deleted" });
+}));
 
 module.exports = router;

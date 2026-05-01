@@ -22,7 +22,18 @@ const upload = multer({ storage: storage });
 // 2. GET ALL
 router.get('/', async (req, res) => {
   try {
-    const people = await MissingPerson.find().sort({ status: -1, createdAt: -1 });
+    const { all } = req.query; // If all=true, return everything (for admins)
+    let query = {};
+    
+    if (all !== 'true') {
+      const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000);
+      // Auto-delete records marked found more than 15 days ago
+      await MissingPerson.deleteMany({ status: 'found', foundAt: { $lt: fifteenDaysAgo } });
+      
+      query = { status: { $in: ['missing', 'found'] } };
+    }
+    
+    const people = await MissingPerson.find(query).sort({ status: -1, createdAt: -1 });
     res.json(people);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -30,7 +41,6 @@ router.get('/', async (req, res) => {
 // 3. REPORT MISSING (Now with Image Upload)
 router.post('/report', upload.single('photo'), async (req, res) => {
   try {
-    // req.body contains text fields, req.file contains the image
     const { reporterId, reporterName, reporterContact, name, age, gender, lastSeenLocation, description } = req.body;
 
     const newReport = new MissingPerson({
@@ -42,7 +52,6 @@ router.post('/report', upload.single('photo'), async (req, res) => {
       gender,
       lastSeenLocation,
       description,
-      // Save file path if an image was uploaded
       photoUrl: req.file ? req.file.path : '' 
     });
 
@@ -56,7 +65,7 @@ router.put('/found/:id', async (req, res) => {
   try {
     const updated = await MissingPerson.findByIdAndUpdate(
       req.params.id, 
-      { status: 'found' },
+      { status: 'found', foundAt: Date.now() },
       { new: true }
     );
     res.json(updated);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Package, Truck, CheckCircle, Plus, MapPin, Box, ArrowRight } from 'lucide-react';
+import { Package, Truck, CheckCircle, Plus, MapPin, Box, ArrowRight, XCircle, Edit, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function LogisticsPage() {
@@ -10,9 +10,12 @@ export function LogisticsPage() {
   const [loading, setLoading] = useState(false);
 
   // Form State
-  const [newItem, setNewItem] = useState({ name: '', category: 'food', quantity: 0, unit: 'boxes', location: 'Main Warehouse' });
-  const [dispatchDest, setDispatchDest] = useState('');
+  const [newItem, setNewItem] = useState({ name: '', category: 'food', quantity: 1, unit: 'boxes', location: 'Main Warehouse' });
+  const [dispatchData, setDispatchData] = useState({ destination: '', quantity: 1 });
   const [selectedId, setSelectedId] = useState(null); // For dispatch modal
+  const [editId, setEditId] = useState(null);
+  const [editItem, setEditItem] = useState({});
+  const [deleteId, setDeleteId] = useState(null);
 
   useEffect(() => {
     fetchResources();
@@ -20,38 +23,67 @@ export function LogisticsPage() {
 
   const fetchResources = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/logistics');
-      setResources(res.data);
-    } catch (err) { console.error(err); }
+      const res = await api.get('/api/logistics');
+      setResources(Array.isArray(res.data) ? res.data : []);
+    } catch (err) { console.warn(err?.response?.status || err.message); }
   };
 
   // HANDLERS
   const handleAdd = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:5000/api/logistics/add', newItem);
+      await api.post('/api/logistics/add', newItem);
       toast.success("Item Added");
-      setNewItem({ name: '', category: 'food', quantity: 0, unit: 'boxes', location: 'Main Warehouse' });
+      setNewItem({ name: '', category: 'food', quantity: 1, unit: 'boxes', location: 'Main Warehouse' });
       fetchResources();
     } catch (err) { toast.error("Failed"); }
   };
 
-  const handleDispatch = async (e) => {
+  const handleEditSubmit = async (e) => {
     e.preventDefault();
-    if (!dispatchDest) return;
     try {
-      await axios.put(`http://localhost:5000/api/logistics/dispatch/${selectedId}`, { destination: dispatchDest });
+      await api.put(`/api/logistics/edit/${editId}`, editItem);
+      toast.success("Updated!");
+      setEditId(null);
+      fetchResources();
+    } catch (err) { toast.error("Failed"); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await api.delete(`/api/logistics/${deleteId}`);
+      toast.success("Deleted");
+      setDeleteId(null);
+      fetchResources();
+    } catch (err) { toast.error("Failed"); }
+  };
+
+  const handleDispatch = async (e, maxQty) => {
+    e.preventDefault();
+    if (!dispatchData.destination) return toast.error('Destination required');
+    if (dispatchData.quantity <= 0 || dispatchData.quantity > maxQty) return toast.error('Invalid quantity');
+    try {
+      await api.put(`/api/logistics/dispatch/${selectedId}`, dispatchData);
       toast.success("Dispatched!");
       setSelectedId(null);
-      setDispatchDest('');
+      setDispatchData({ destination: '', quantity: 1 });
       fetchResources();
     } catch (err) { toast.error("Failed"); }
   };
 
   const handleDeliver = async (id) => {
     try {
-      await axios.put(`http://localhost:5000/api/logistics/deliver/${id}`);
+      await api.put(`/api/logistics/deliver/${id}`);
       toast.success("Marked as Distributed");
+      fetchResources();
+    } catch (err) { toast.error("Failed"); }
+  };
+
+  const handleFailed = async (id) => {
+    try {
+      await api.put(`/api/logistics/failed/${id}`);
+      toast.success("Returned to stored inventory");
       fetchResources();
     } catch (err) { toast.error("Failed"); }
   };
@@ -102,8 +134,8 @@ export function LogisticsPage() {
                     <option value="equipment">Equipment</option>
                     <option value="shelter">Shelter</option>
                   </select>
-                  <input type="number" className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" 
-                    placeholder="Qty" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} required />
+                  <input type="number" min={1} className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" 
+                    placeholder="Qty" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: parseInt(e.target.value) || 1})} required />
                 </div>
                 
                 <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" 
@@ -117,37 +149,67 @@ export function LogisticsPage() {
             <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
               {inventoryItems.map(item => (
                 <div key={item._id} className="bg-slate-800 border border-slate-700 p-5 rounded-xl flex flex-col justify-between">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-3 rounded-lg ${
-                        item.category === 'food' ? 'bg-orange-500/10 text-orange-500' :
-                        item.category === 'medical' ? 'bg-red-500/10 text-red-500' :
-                        'bg-blue-500/10 text-blue-500'
-                      }`}>
-                        <Box size={20} />
+                  {editId === item._id ? (
+                    <form onSubmit={handleEditSubmit} className="space-y-3 animate-in fade-in">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold text-white text-sm">Edit Item</span>
+                        <button type="button" onClick={() => setEditId(null)} className="text-slate-400 hover:text-white"><X size={16}/></button>
                       </div>
-                      <div>
-                        <h3 className="font-bold text-white text-lg">{item.name}</h3>
-                        <p className="text-xs text-slate-400 capitalize">{item.category} • {item.location}</p>
+                      <input className="w-full bg-slate-900 border border-slate-700 p-2 rounded-lg text-white text-sm outline-none"
+                        value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} required />
+                      <div className="flex gap-2">
+                         <input type="number" min={0} className="w-24 bg-slate-900 border border-slate-700 p-2 rounded-lg text-white text-sm outline-none"
+                           value={editItem.quantity} onChange={e => setEditItem({...editItem, quantity: parseInt(e.target.value) || 0})} required />
+                         <input className="flex-1 bg-slate-900 border border-slate-700 p-2 rounded-lg text-white text-sm outline-none"
+                           value={editItem.location} onChange={e => setEditItem({...editItem, location: e.target.value})} required />
                       </div>
-                    </div>
-                    <span className="bg-slate-700 text-white px-3 py-1 rounded-lg font-bold text-sm">
-                      {item.quantity} {item.unit}
-                    </span>
-                  </div>
-                  
-                  {/* Dispatch Section */}
-                  {selectedId === item._id ? (
-                    <form onSubmit={handleDispatch} className="mt-2 flex gap-2 animate-in fade-in">
-                      <input autoFocus className="flex-1 bg-slate-900 border border-slate-700 p-2 rounded-lg text-white text-sm outline-none"
-                        placeholder="Destination?" value={dispatchDest} onChange={e => setDispatchDest(e.target.value)} />
-                      <button type="submit" className="bg-amber-600 hover:bg-amber-500 text-white p-2 rounded-lg"><ArrowRight size={18}/></button>
-                      <button type="button" onClick={() => setSelectedId(null)} className="text-slate-400 hover:text-white p-2">Cancel</button>
+                      <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-sm">Save Changes</button>
                     </form>
                   ) : (
-                    <button onClick={() => setSelectedId(item._id)} className="w-full bg-slate-700 hover:bg-amber-600/20 hover:text-amber-500 hover:border-amber-500 border border-transparent text-slate-300 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2">
-                      <Truck size={16} /> Dispatch / Move
-                    </button>
+                    <>
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-3 rounded-lg ${
+                            item.category === 'food' ? 'bg-orange-500/10 text-orange-500' :
+                            item.category === 'medical' ? 'bg-red-500/10 text-red-500' :
+                            'bg-blue-500/10 text-blue-500'
+                          }`}>
+                            <Box size={20} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-white text-lg">{item.name}</h3>
+                            <p className="text-xs text-slate-400 capitalize">{item.category} • {item.location}</p>
+                          </div>
+                        </div>
+                        <span className="bg-slate-700 text-white px-3 py-1 rounded-lg font-bold text-sm">
+                          {item.quantity} {item.unit}
+                        </span>
+                      </div>
+                      
+                      {/* Action Buttons / Dispatch Section */}
+                      {selectedId === item._id ? (
+                        <form onSubmit={(e) => handleDispatch(e, item.quantity)} className="mt-2 space-y-2 animate-in fade-in">
+                          <div className="flex gap-2">
+                             <input type="number" min={1} max={item.quantity} className="w-20 bg-slate-900 border border-slate-700 p-2 rounded-lg text-white text-sm outline-none"
+                               value={dispatchData.quantity} onChange={e => setDispatchData({...dispatchData, quantity: parseInt(e.target.value) || 1})} title="Quantity to dispatch" />
+                             <input autoFocus className="flex-1 bg-slate-900 border border-slate-700 p-2 rounded-lg text-white text-sm outline-none"
+                               placeholder="Destination?" value={dispatchData.destination} onChange={e => setDispatchData({...dispatchData, destination: e.target.value})} />
+                          </div>
+                          <div className="flex gap-2">
+                             <button type="submit" className="flex-1 bg-amber-600 hover:bg-amber-500 text-white p-2 rounded-lg font-bold text-xs">Dispatch</button>
+                             <button type="button" onClick={() => setSelectedId(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg text-xs font-bold">Cancel</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="flex gap-2 mt-2">
+                           <button onClick={() => { setSelectedId(item._id); setDispatchData({ destination: '', quantity: item.quantity }); }} className="flex-1 bg-slate-700 hover:bg-amber-600/20 hover:text-amber-500 hover:border-amber-500 border border-transparent text-slate-300 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2">
+                             <Truck size={16} /> Dispatch
+                           </button>
+                           <button onClick={() => { setEditId(item._id); setEditItem(item); }} className="px-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg"><Edit size={16} /></button>
+                           <button onClick={() => setDeleteId(item._id)} className="px-3 bg-slate-700 hover:bg-red-600/20 hover:text-red-500 text-slate-300 rounded-lg"><Trash2 size={16} /></button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -167,7 +229,7 @@ export function LogisticsPage() {
                 </div>
                 
                 <h3 className="font-bold text-white text-xl mb-1">{item.name}</h3>
-                <p className="text-amber-500 text-xs font-bold uppercase tracking-wider mb-4">In Transit</p>
+                <p className="text-amber-500 text-xs font-bold uppercase tracking-wider mb-2">In Transit ({item.quantity} {item.unit})</p>
                 
                 <div className="flex items-center gap-4 text-sm text-slate-300 mb-6">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {item.location}</div>
@@ -175,15 +237,28 @@ export function LogisticsPage() {
                   <div className="flex items-center gap-1 text-white font-bold"><MapPin size={14}/> {item.destination}</div>
                 </div>
 
-                <button onClick={() => handleDeliver(item._id)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-                  <CheckCircle size={18} /> Mark Delivered
-                </button>
+                <div className="flex gap-2">
+                   <button onClick={() => handleDeliver(item._id)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-2 text-sm">
+                     <CheckCircle size={16} /> Delivered
+                   </button>
+                   <button onClick={() => handleFailed(item._id)} className="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-2 text-sm">
+                     <XCircle size={16} /> Failed
+                   </button>
+                </div>
               </div>
             ))}
           </div>
         )}
 
       </div>
+      <ConfirmModal 
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={handleDelete}
+        title="Delete Resource"
+        message="Are you sure you want to delete this item from inventory? This action cannot be undone."
+        isDanger={true}
+      />
     </DashboardLayout>
   );
 }

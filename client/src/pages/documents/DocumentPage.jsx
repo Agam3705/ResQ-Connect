@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../lib/api';
 import { useStore } from '../../store/useStore';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Lock, Unlock, Upload, FileText, Trash2, Shield, Eye, File, KeyRound, Loader2, StickyNote, X } from 'lucide-react';
@@ -31,7 +31,7 @@ export function DocumentPage() {
 
   const fetchDocs = async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/documents/${userId}`);
+      const res = await api.get(`/api/documents/${userId}`);
       setDocs(res.data);
     } catch (err) {
       toast.error("Failed to load items");
@@ -43,7 +43,7 @@ export function DocumentPage() {
     if (!passwordInput) return toast.error("Enter password");
     setVerifying(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/verify-password', { userId, password: passwordInput });
+      await api.post('/api/auth/verify-password', { userId, password: passwordInput });
       toast.success("Vault Unlocked");
       setIsUnlocked(true);
       setPasswordInput('');
@@ -68,12 +68,12 @@ export function DocumentPage() {
         formData.append('title', title);
         formData.append('category', category);
         
-        await axios.post('http://localhost:5000/api/documents/upload', formData, {
+        await api.post('/api/documents/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
         if (!textContent) throw new Error("Note content is empty");
-        await axios.post('http://localhost:5000/api/documents/note', {
+        await api.post('/api/documents/note', {
           userId, title, category, textContent
         });
       }
@@ -94,7 +94,7 @@ export function DocumentPage() {
   const handleDelete = async (id) => {
     if(!window.confirm("Delete this item?")) return;
     try {
-      await axios.delete(`http://localhost:5000/api/documents/${id}`);
+      await api.delete(`/api/documents/${id}`);
       toast.success("Deleted");
       fetchDocs();
     } catch (err) {
@@ -216,7 +216,7 @@ export function DocumentPage() {
                 
                 <div className="flex items-center gap-2">
                   {doc.type === 'file' ? (
-                    <a href={`http://localhost:5000/${doc.filePath}`} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-emerald-400">
+                    <a href={`${import.meta.env.VITE_API_URL || ''}/${doc.filePath}`} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-emerald-400">
                       <Eye size={18} />
                     </a>
                   ) : (

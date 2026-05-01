@@ -4,6 +4,7 @@ const hazardSchema = new mongoose.Schema({
   type: { type: String, required: true }, // Fire, Flood, Debris
   description: String,
   location: { lat: Number, lng: Number },
-  timestamp: { type: Date, default: Date.now }
+  timestamp: { type: Date, default: Date.now },
+  approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
 });
 module.exports = mongoose.model('Hazard', hazardSchema);

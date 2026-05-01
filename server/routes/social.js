@@ -25,7 +25,7 @@ router.post('/chat', async (req, res) => {
 router.get('/agencies', async (req, res) => {
   try {
     // Find users with role 'agency'
-    const agencies = await User.find({ role: 'agency' }).select('name email agencyDetails');
+    const agencies = await User.find({ role: 'agency', isActive: true }).select('name email agencyDetails lastLocation');
     res.json(agencies);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
